@@ -4,6 +4,22 @@ Python微信支付V3
 
 - 目前只实现了H5支付，小程序支付，后续补充其他。如有问题联系，谢谢！
 
+```python
+
+# 如果 Cryptodome 报错使用 Crypto 代替
+
+# 旧
+from Cryptodome.PublicKey import RSA
+from Cryptodome.Signature import pkcs1_15
+from Cryptodome.Hash import SHA256
+from Cryptodome.Cipher import AES
+
+# 新
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+from Crypto.Cipher import AES
+```
 ### H5支付例子
 
 ```python
