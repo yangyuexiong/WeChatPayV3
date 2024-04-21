@@ -4,6 +4,8 @@ Python微信支付V3
 
 - 目前只实现了H5支付，后续补充其他。如有问题联系，谢谢！
 
+### H5支付例子
+
 ```python
 
 from main import WeChatPayV3
@@ -22,12 +24,13 @@ wx_pay = WeChatPayV3(
     v3key=v3key,
     apiclient_key=apiclient_key,
     serial_no=serial_no,
-    notify_url=notify_url
+    notify_url=notify_url,
+    pay_type="h5"
 )
 
 order_number = gen_order_number()
 resp = wx_pay.pay(
-    out_trade_no="202206301330151656567015",
+    out_trade_no=order_number,
     total=1,
     description="测试",
     ip="127.0.0.1"
@@ -35,6 +38,35 @@ resp = wx_pay.pay(
 print(resp)
 ```
 
-- 下单 [test_pay.py](./test/test_pay.py)
-- 回调 [test_notify.py](./test/test_notify.py)
-- 主动查询、关闭 [test_pay_query.py](./test/test_pay_query.py)
+- 下单 [test_pay.py](test/test_h5_pay/test_pay.py)
+- 回调 [test_notify.py](test/test_h5_pay/test_notify.py)
+- 主动查询、关闭 [test_pay_query.py](test/test_h5_pay/test_pay_query.py)
+
+### 小程序支付例子
+```python
+from config import *
+from main import WeChatPayV3
+from utils import gen_order_number
+
+# 要注意`appid`是小程序的不是公众号的
+
+wx_pay = WeChatPayV3(
+    mchid=mchid,
+    appid=appid,
+    v3key=v3key,
+    apiclient_key=apiclient_key,
+    serial_no=serial_no,
+    notify_url=notify_url,
+    pay_type="mini"
+)
+
+order_number = gen_order_number()
+resp = wx_pay.pay(
+    out_trade_no=order_number,
+    total=1,
+    description="测试",
+    ip="127.0.0.1",
+    openid="omScQ7XY4LM-FyCiJmJH6H9r2Zxo"
+)
+print(resp)
+```

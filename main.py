@@ -23,15 +23,16 @@ from utils import *
 class WeChatPayV3:
     """微信支付API V3"""
 
-    def __init__(self, mchid, appid, v3key, apiclient_key, notify_url, serial_no):
+    def __init__(self, mchid, appid, v3key, apiclient_key, notify_url, serial_no, pay_type="h5"):
         """
 
         :param mchid: 商户号
-        :param appid: appid
+        :param appid: appid(注意:H5用的是公众号的appid, 小程序用的是小程序的appid)
         :param v3key: API V3 密钥
         :param apiclient_key: 私钥证书路径
         :param notify_url: 回调地址
         :param serial_no: 商户号证书序列号
+        :param pay_type: 支付类型(目前支持:H5,小程序) -> pay_type="h5"; pay_type="mini"
         """
         self.mchid = mchid
         self.appid = appid
@@ -39,10 +40,25 @@ class WeChatPayV3:
         self.apiclient_key = apiclient_key
         self.notify_url = notify_url
         self.serial_no = serial_no
+        self.pay_type = pay_type.lower()
+
+        if self.pay_type not in ("h5", "mini"):
+            raise TypeError("pay_type must be 'h5' or 'mini'")
 
         self.base_pay_url = "https://api.mch.weixin.qq.com"
-        self.h5_pay_url = "/v3/pay/transactions/h5"
         self.certificates_url = "/v3/certificates"
+
+        if self.pay_type == "h5":
+            self.pay_uri = "/v3/pay/transactions/h5"
+        elif self.pay_type == "mini":
+            self.pay_uri = "/v3/pay/transactions/jsapi"
+        else:
+            self.pay_uri = ""
+
+        self.pay_url = {
+            "h5": f"{self.base_pay_url}{self.pay_uri}",
+            "mini": f"{self.base_pay_url}{self.pay_uri}"
+        }
 
     @staticmethod
     def gen_pay_sign(method, url, timestamp, random_str, req_json):
@@ -96,9 +112,9 @@ class WeChatPayV3:
         return sign_str
 
     @staticmethod
-    def gen_sign_str(method, url, timestamp, random_str, data):
+    def gen_sign_str_h5(method, url, timestamp, random_str, data):
         """
-        生成请求证书的签名串
+        生成(H5支付)请求证书的签名串
         :param method: HTTP请求方法\n
         :param url: URL\n
         :param timestamp: 请求时间戳\n
@@ -125,6 +141,32 @@ class WeChatPayV3:
         sign_str = '\n'.join(sign_list) + '\n'
         return sign_str
 
+    @staticmethod
+    def gen_sign_str_mini(mini_app_id, timestamp, random_str, prepay_str):
+        """
+        生成(小程序支付)请求证书的签名串
+        :param mini_app_id: 小程序appId\n
+        :param timestamp: 时间戳\n
+        :param random_str: 随机字符串\n
+        :param prepay_str: 订单详情扩展字符串\n   例子:prepay_id=wx21001701988932caa2c3a24e63d62e0001
+        :return:
+        """
+
+        """
+        小程序appId\n
+        时间戳\n
+        随机字符串\n
+        订单详情扩展字符串\n
+        """
+        sign_list = [
+            mini_app_id,
+            timestamp,
+            random_str,
+            prepay_str
+        ]
+        sign_str = '\n'.join(sign_list) + '\n'
+        return sign_str
+
     def gen_cert(self):
         """应答签名验证(微信平台证书)"""
 
@@ -133,7 +175,7 @@ class WeChatPayV3:
         timestamp = gen_timestamp()
 
         # 生成请求证书的签名串
-        sign_str = self.gen_sign_str(
+        sign_str = self.gen_sign_str_h5(
             method='GET',
             url=self.certificates_url,
             timestamp=timestamp,
@@ -143,6 +185,7 @@ class WeChatPayV3:
 
         # 生成签名
         sign = self.sign(sign_str)
+        print(sign)
 
         # 生成 Authorization
         authorization = self.gen_authorization(
@@ -187,7 +230,7 @@ class WeChatPayV3:
         :return:
         """
 
-        authorization = 'WECHATPAY2-SHA256-RSA2048  ' \
+        authorization = 'WECHATPAY2-SHA256-RSA2048 ' \
                         'mchid="{mchid}",' \
                         'nonce_str="{random_str}",' \
                         'signature="{sign}",' \
@@ -201,20 +244,35 @@ class WeChatPayV3:
 
         return authorization
 
-    def pay(self, out_trade_no, total, description, ip):
-        """
-        获取h5支付的url
-        :param out_trade_no: 订单号
-        :param total: 总金额
-        :param description: 描述
-        :param ip: 客户端ip地址
-        :return:
-        """
-        try:
-            pay_url = f"{self.base_pay_url}{self.h5_pay_url}"
-            random_str = gen_random_str()
-            timestamp = gen_timestamp()
+    def gen_pay_request_data(self, out_trade_no, description, total, ip, openid=None):
+        """生成调起支付的请求参数"""
 
+        if self.pay_type == "mini":
+            data = {
+                "mchid": self.mchid,
+                "out_trade_no": out_trade_no,
+                "appid": self.appid,
+                "description": description,
+                "notify_url": self.notify_url,
+                "amount": {
+                    "total": total,
+                    "currency": "CNY"
+                },
+                "scene_info": {
+                    "payer_client_ip": ip,
+                    "device_id": "013467007045764",
+                    "store_info": {
+                        "id": "0001",
+                        "name": "腾讯大厦分店",
+                        "area_code": "440305",
+                        "address": "广东省深圳市南山区科技中一道10000号"
+                    }
+                },
+                "payer": {
+                    "openid": "omScQ7XY4LM-FyCiJmJH6H9r2Zxo"
+                },
+            }
+        elif self.pay_type == "h5":
             data = {
                 "mchid": self.mchid,
                 "out_trade_no": out_trade_no,
@@ -232,24 +290,112 @@ class WeChatPayV3:
                     }
                 }
             }
+        else:
+            data = {}
+
+        print(json.dumps(data, ensure_ascii=False))
+        return data
+
+    def handle_pay_response(self, response, **kwargs):
+        """
+        处理支付相应结果
+        :param response:
+        :param kwargs:
+
+        小程序-需要拼装参数返回给前端:
+            {
+                "timeStamp": "1713629821",
+                "nonceStr": "JMT0BF57BRIU4YKMNZ2EJQ7RSC70XUUJ",
+                "package": "prepay_id=wx21001701988932caa...",
+                "signType": "RSA",
+                "paySign": "ZffKZxZiebTCXBUydfYJvjMZh++78b..."
+            }
+
+        h5-返回值不需要处理直接返回给前端
+
+        """
+
+        if self.pay_type == "mini":
+            mini_app_id = kwargs.get("app_id")
+            timestamp = kwargs.get("timestamp")
+            random_str = kwargs.get("random_str")
+            prepay_id = response.get("prepay_id")
+            prepay_str = f"prepay_id={prepay_id}"
+
+            mini_sign_str = self.gen_sign_str_mini(
+                mini_app_id=mini_app_id,
+                timestamp=timestamp,
+                random_str=random_str,
+                prepay_str=prepay_str
+            )
+            paySign = self.sign(mini_sign_str)
+
+            result = {
+                "timeStamp": timestamp,
+                "nonceStr": random_str,
+                "package": prepay_str,
+                "signType": 'RSA',
+                "paySign": paySign,
+            }
+            return result
+
+        elif self.pay_type == "h5":
+            return response
+
+        else:
+            pass
+
+    def pay(self, out_trade_no, total, description, ip, openid=None):
+        """
+        1.pay_type="h5"
+            获取h5支付的url
+
+        2.pay_type="mini"
+            获取: {"prepay_id": "wx21001701988932caa2c3a24e63d62e0001"}
+            拼装成: "prepay_id=wx21001701988932caa2c3a24e63d62e0001" 作为后续使用的参数
+
+        :param out_trade_no: 订单号
+        :param total: 总金额
+        :param description: 描述
+        :param ip: 客户端ip地址
+        :param openid: 小程序支付时需要该参数
+        :return:
+        """
+        try:
+            pay_url = self.pay_url.get(self.pay_type)
+            random_str = gen_random_str()
+            timestamp = gen_timestamp()
+
+            print(random_str)
+            print(timestamp)
+
+            data = self.gen_pay_request_data(
+                out_trade_no=out_trade_no,
+                total=total,
+                description=description,
+                ip=ip,
+                openid=openid
+            )
             data = json.dumps(data)  # 序列化成JSON字符串
 
             sign_str = self.gen_pay_sign(
                 method="POST",
-                url=self.h5_pay_url,
+                url=self.pay_uri,
                 timestamp=timestamp,
                 random_str=random_str,
                 req_json=data
             )
             sign = self.sign(sign_str=sign_str)
-            print(sign)
+            print("=== sign ===")
+            print(sign, "\n")
 
             authorization = self.gen_authorization(
                 random_str=random_str,
                 sign=sign,
                 timestamp=timestamp,
             )
-            print(authorization)
+            print("=== sign ===")
+            print(authorization, "\n")
 
             headers = {
                 'Content-Type': 'application/json; charset=UTF-8',
@@ -257,7 +403,15 @@ class WeChatPayV3:
             }
             response = requests.post(pay_url, data=data, headers=headers, verify=False)
             print(response)
-            return response.json()
+            print(response.json())
+
+            kw = {
+                "app_id": self.appid,
+                "timestamp": random_str,
+                "random_str": timestamp,
+            }
+            call_pay_response = self.handle_pay_response(response=response.json(), **kw)
+            return call_pay_response
         except BaseException as e:
             print(f"支付失败:{str(e)}")
             return {"error": f"支付失败:{str(e)}"}
